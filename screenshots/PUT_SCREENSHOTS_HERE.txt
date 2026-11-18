@@ -1,0 +1,1 @@
+Put 01-dynamodb-table.png ... 14-scheduler-disabled.png here (account ID blurred).
