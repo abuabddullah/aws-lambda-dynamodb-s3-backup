@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AWS Lambda + DynamoDB + S3 Backup — ধাপে ধাপে গাইড</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f6f5f1; --panel:#ffffff; --ink:#1d1c1a; --muted:#6b675f; --line:#e3e0d8;
+  --accent:#e8770c; --accent-soft:#fdf0e3; --blue:#2563a8; --blue-soft:#e8f0fa;
+  --green:#1f7a4c; --green-soft:#e5f4ec; --red:#b3261e; --red-soft:#fbeaea;
+  --purple:#6b3fa0; --purple-soft:#f1eafa; --code:#f1efe9;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#151514; --panel:#1e1e1c; --ink:#ecebe6; --muted:#a29e94; --line:#33322e;
+    --accent:#f59a3c; --accent-soft:#3a2a18; --blue:#7fb0e8; --blue-soft:#1b2838;
+    --green:#5cc48d; --green-soft:#16291f; --red:#f08a82; --red-soft:#341b1a;
+    --purple:#b893e6; --purple-soft:#271d33; --code:#262523;
+  }
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Hind Siliguri",system-ui,sans-serif;font-size:17px;line-height:1.65}
+code,pre,.mono{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:.86em}
+code{background:var(--code);padding:.08em .38em;border-radius:4px}
+a{color:var(--blue)}
+.wrap{display:grid;grid-template-columns:260px 1fr;max-width:1240px;margin:0 auto;gap:28px;padding:24px}
+@media (max-width:900px){.wrap{grid-template-columns:1fr}.side{position:static!important;max-height:none!important}}
+.side{position:sticky;top:20px;align-self:start;max-height:calc(100vh - 40px);overflow:auto}
+.side nav a{display:block;padding:5px 10px;border-radius:6px;color:var(--ink);text-decoration:none;font-size:15px}
+.side nav a:hover{background:var(--accent-soft)}
+.side nav .grp{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:14px 10px 4px}
+.progress{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:14px}
+.bar{height:8px;background:var(--line);border-radius:99px;overflow:hidden;margin-top:8px}
+.bar>div{height:100%;background:var(--accent);width:0;transition:width .3s}
+h1{font-size:34px;line-height:1.2;margin:0 0 6px}
+h2{font-size:26px;margin:44px 0 12px;padding-top:8px;border-top:2px solid var(--ink)}
+h3{font-size:19px;margin:0}
+.lede{color:var(--muted);font-size:18px;margin:0 0 20px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin:14px 0}
+.config{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+@media (max-width:700px){.config{grid-template-columns:1fr}}
+.config label{font-size:14px;color:var(--muted);display:block;margin-bottom:4px}
+.config input{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font-family:"JetBrains Mono",monospace;font-size:14px}
+.config input:focus{outline:2px solid var(--accent);border-color:transparent}
+.b{font-weight:600;color:var(--accent);font-family:"JetBrains Mono",monospace;font-size:.86em;background:var(--accent-soft);padding:.05em .35em;border-radius:4px}
+.step{background:var(--panel);border:1px solid var(--line);border-radius:12px;margin:12px 0;overflow:hidden}
+.step.done{border-color:var(--green)}
+.step.done .shead{background:var(--green-soft)}
+.shead{display:flex;gap:12px;align-items:center;padding:12px 16px;cursor:pointer;user-select:none}
+.shead input{width:20px;height:20px;accent-color:var(--green);flex:none;cursor:pointer}
+.snum{font-family:"JetBrains Mono",monospace;font-size:13px;color:var(--muted);flex:none;width:58px}
+.shead h3{flex:1}
+.chev{color:var(--muted);transition:transform .2s}
+.step.open .chev{transform:rotate(90deg)}
+.sbody{display:none;padding:2px 20px 18px 20px;border-top:1px solid var(--line)}
+.step.open .sbody{display:block}
+.sbody ol,.sbody ul{padding-left:22px;margin:10px 0}
+.sbody li{margin:4px 0}
+.why,.say,.rec,.warn,.shot{border-radius:8px;padding:10px 14px;margin:12px 0;font-size:16px}
+.why{background:var(--blue-soft);border-left:4px solid var(--blue)}
+.say{background:var(--purple-soft);border-left:4px solid var(--purple)}
+.rec{background:var(--accent-soft);border-left:4px solid var(--accent)}
+.warn{background:var(--red-soft);border-left:4px solid var(--red)}
+.shot{background:var(--green-soft);border-left:4px solid var(--green)}
+.tag{font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;display:block;margin-bottom:2px}
+.why .tag{color:var(--blue)} .say .tag{color:var(--purple)} .rec .tag{color:var(--accent)} .warn .tag{color:var(--red)} .shot .tag{color:var(--green)}
+.checkpoint{background:var(--ink);color:var(--bg);border-radius:10px;padding:10px 16px;margin:16px 0;font-weight:600}
+pre{background:var(--code);border:1px solid var(--line);border-radius:8px;padding:12px 14px;overflow:auto;margin:8px 0;position:relative;line-height:1.5}
+.copy{position:absolute;top:8px;right:8px;font-family:"Hind Siliguri",sans-serif;font-size:13px;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:6px;padding:3px 10px;cursor:pointer}
+.copy:hover{border-color:var(--accent)}
+table{border-collapse:collapse;width:100%;font-size:15px;margin:10px 0}
+th,td{border-bottom:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+th{font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+.scene{display:grid;grid-template-columns:64px 1fr 120px;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
+.scene:last-child{border:0}
+.scene .n{font-family:"JetBrains Mono",monospace;font-weight:600;color:var(--accent)}
+.scene .t{color:var(--muted);font-size:14px;text-align:right}
+.diagram svg{width:100%;height:auto;display:block}
+.small{font-size:14px;color:var(--muted)}
+.btnrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.btn{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;padding:6px 12px;cursor:pointer;font-family:inherit;font-size:14px}
+.btn:hover{border-color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<aside class="side">
+  <div class="progress">
+    <div style="display:flex;justify-content:space-between;font-size:14px"><b>অগ্রগতি</b><span id="pct">0 / 0</span></div>
+    <div class="bar"><div id="barfill"></div></div>
+  </div>
+  <nav>
+    <div class="grp">শুরু</div>
+    <a href="#setup">আপনার মানগুলো</a>
+    <a href="#video">ভিডিও প্ল্যান</a>
+    <a href="#arch">আর্কিটেকচার</a>
+    <div class="grp">কাজ</div>
+    <a href="#part-a">Part A — DynamoDB + S3</a>
+    <a href="#part-b">Part B — Lambda #1</a>
+    <a href="#part-c">Part C — Lambda #2</a>
+    <a href="#part-d">Part D — Scheduler</a>
+    <a href="#part-e">Part E — দেখা ও Cleanup</a>
+    <div class="grp">শেখা</div>
+    <a href="#code">কোড লাইন ধরে</a>
+    <a href="#trouble">এরর হলে</a>
+    <a href="#shots">স্ক্রিনশট লিস্ট</a>
+  </nav>
+  <div class="btnrow"><button class="btn" id="expandAll">সব খুলুন</button><button class="btn" id="reset">টিক মুছুন</button></div>
+</aside>
+
+<main>
+<h1>Serverless পাইপলাইন: API → Lambda → DynamoDB → Lambda → S3</h1>
+<p class="lede">প্রতিটা ধাপে তিনটা জিনিস আছে: <b>কী করবেন</b>, <span style="color:var(--blue)">কেন করছেন</span>, আর <span style="color:var(--purple)">ভিডিওতে কী বলবেন</span>। কাজ শেষ হলে বাঁ পাশের বক্সে টিক দিন। আপনার ব্রাউজার টিকগুলো মনে রাখবে।</p>
+
+<!-- SETUP -->
+<h2 id="setup">১. আপনার মানগুলো বসান</h2>
+<p>এখানে মান বসালে নিচের সব IAM পলিসি আর environment variable নিজে থেকেই আপডেট হবে। তারপর Copy করে AWS-এ পেস্ট করলেই হবে।</p>
+<div class="card">
+  <div class="config">
+    <div><label>AWS Region</label><input id="cfg-region" value="us-east-1"></div>
+    <div><label>Account ID (১২ সংখ্যা)</label><input id="cfg-account" placeholder="123456789012" maxlength="12"></div>
+    <div><label>S3 bucket নাম</label><input id="cfg-bucket" placeholder="student-lambda-backups-asif-1118"></div>
+  </div>
+  <p class="small" style="margin:10px 0 0">এই মানগুলো শুধু আপনার ব্রাউজারে থাকে, কোথাও পাঠানো হয় না। Bucket নাম পুরো দুনিয়ায় ইউনিক হতে হবে: ছোট হাতের অক্ষর, সংখ্যা আর হাইফেন, ৩–৬৩ অক্ষর।</p>
+</div>
+
+<!-- VIDEO -->
+<div class="rec"><span class="tag">নতুন AWS কনসোল (নভেম্বর ২০২৬)</span>অ্যাসাইনমেন্টের README পুরনো কনসোল দেখে লেখা। যেখানে নাম বা মেনু বদলেছে, সেখানে এই গাইডে নতুন নামটা দেওয়া আছে: <b>Lambda → "Create Event Function"</b> (architecture আর role এখন toggle), <b>CloudWatch → Logs → Log Management</b>, আর টেস্ট রেজাল্টে সরাসরি <b>logs ↗</b> লিংক।</div>
+
+<h2 id="video">২. ভিডিও রেকর্ডিং প্ল্যান</h2>
+<div class="warn"><span class="tag">রেকর্ডের আগে প্রাইভেসি</span>
+এই কাজে <b>Account ID</b> স্ক্রিনে বেশ কয়েক জায়গায় আসবে: উপরের ডানদিকের অ্যাকাউন্ট মেনু, IAM পলিসির JSON, table ARN, Lambda-র function ARN। ক্যামেরা চালু থাকা অবস্থায় অ্যাকাউন্ট মেনু খুলবেন না। Account ID আগে থেকে কপি করে এই পেজে বসিয়ে রাখুন। এডিটের সময় পলিসি JSON আর ARN-এর জায়গাগুলো blur করে দেবেন। নিচে যে ধাপে blur লাগবে, সেখানে <b>BLUR</b> চিহ্ন দেওয়া আছে। Access key বা password কখনোই স্ক্রিনে আনবেন না।
+</div>
+<div class="rec"><span class="tag">রেকর্ডিং সেটআপ</span>
+<ul style="margin:4px 0">
+<li>শুধু AWS কনসোলের জন্য আলাদা একটা Chrome window রাখুন। বাড়তি ট্যাব আর বুকমার্ক বার বন্ধ রাখলে ফ্রেম পরিষ্কার দেখাবে।</li>
+<li>ব্রাউজার zoom ১১০–১২৫% রাখুন, তাহলে মোবাইলেও লেখা পড়া যাবে।</li>
+<li>এই গাইড পেজটা দ্বিতীয় মনিটরে বা ফোনে খোলা রাখুন, রেকর্ডিং ফ্রেমের বাইরে।</li>
+<li>পুরোটা এক টানে রেকর্ড না করে প্রতিটা Part আলাদা ক্লিপে রেকর্ড করুন। কোথাও ভুল হলে শুধু সেই ক্লিপটা আবার করতে হবে।</li>
+<li>যেখানে অপেক্ষা করতে হয় (table Active হওয়া, Scheduler-এর রান), সেখানে রেকর্ডিং pause করুন, অথবা এডিটে কেটে দিন।</li>
+</ul></div>
+
+<div class="card">
+<div class="scene"><div class="n">S0</div><div><b>ভূমিকা ও আর্কিটেকচার।</b> কী বানাচ্ছি আর কেন, নিচের ডায়াগ্রাম দেখিয়ে।</div><div class="t">~২ মিনিট</div></div>
+<div class="scene"><div class="n">S1</div><div><b>Part A:</b> Region বাছাই, DynamoDB table, S3 bucket।</div><div class="t">~৪ মিনিট</div></div>
+<div class="scene"><div class="n">S2</div><div><b>Part B:</b> Lambda #1 বানানো, IAM পলিসি, ZIP আপলোড, টেস্ট, CloudWatch আর DynamoDB-তে ডেটা দেখা।</div><div class="t">~৮ মিনিট</div></div>
+<div class="scene"><div class="n">S3</div><div><b>Part C:</b> Lambda #2 বানানো, পলিসি, env vars, টেস্ট, S3-তে JSON ফাইল দেখা।</div><div class="t">~৭ মিনিট</div></div>
+<div class="scene"><div class="n">S4</div><div><b>Part D:</b> EventBridge Scheduler সেটআপ। এরপর ৫–৬ মিনিট অপেক্ষা (pause), তারপর নতুন ফাইলগুলো দেখানো।</div><div class="t">~৫ মিনিট</div></div>
+<div class="scene"><div class="n">S5</div><div><b>Part E:</b> Metrics বনাম Logs, lifecycle rule, এটা কেন production backup না।</div><div class="t">~৪ মিনিট</div></div>
+<div class="scene"><div class="n">S6</div><div><b>Cleanup।</b> সবকিছু ডিলিট করা। README-র স্ক্রিনশট নেওয়া শেষ হওয়ার পরে রেকর্ড করবেন।</div><div class="t">~৩ মিনিট</div></div>
+</div>
+<div class="shot"><span class="tag">স্ক্রিনশট</span>রেকর্ড করার সময়ই README-র স্ক্রিনশটগুলো নিয়ে রাখুন। যে ধাপে স্ক্রিনশট লাগবে সেখানে সবুজ বক্সে ফাইলের নাম দেওয়া আছে, আর পুরো লিস্টটা <a href="#shots">একদম নিচে</a> পাবেন।</div>
+
+<!-- ARCH -->
+<h2 id="arch">৩. আর্কিটেকচার</h2>
+<div class="card diagram">
+<svg viewBox="0 0 760 420" xmlns="http://www.w3.org/2000/svg" font-family="Hind Siliguri, sans-serif">
+  <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/></marker></defs>
+  <g font-size="14">
+    <rect x="20" y="30" width="200" height="56" rx="10" fill="var(--bg)" stroke="var(--line)"/>
+    <text x="120" y="54" text-anchor="middle" font-weight="600" fill="var(--ink)">JSONPlaceholder API</text>
+    <text x="120" y="74" text-anchor="middle" fill="var(--muted)" font-size="12">/users — ১০ জন ইউজার</text>
+
+    <rect x="280" y="30" width="200" height="56" rx="10" fill="var(--accent-soft)" stroke="var(--accent)"/>
+    <text x="380" y="54" text-anchor="middle" font-weight="600" fill="var(--ink)">Lambda #1</text>
+    <text x="380" y="74" text-anchor="middle" fill="var(--muted)" font-size="12">import-jsonplaceholder-users</text>
+
+    <rect x="540" y="30" width="200" height="56" rx="10" fill="var(--blue-soft)" stroke="var(--blue)"/>
+    <text x="640" y="54" text-anchor="middle" font-weight="600" fill="var(--ink)">DynamoDB</text>
+    <text x="640" y="74" text-anchor="middle" fill="var(--muted)" font-size="12">jsonplaceholder-users</text>
+
+    <rect x="540" y="200" width="200" height="56" rx="10" fill="var(--accent-soft)" stroke="var(--accent)"/>
+    <text x="640" y="224" text-anchor="middle" font-weight="600" fill="var(--ink)">Lambda #2</text>
+    <text x="640" y="244" text-anchor="middle" fill="var(--muted)" font-size="12">export-dynamodb-to-s3</text>
+
+    <rect x="280" y="200" width="200" height="56" rx="10" fill="var(--purple-soft)" stroke="var(--purple)"/>
+    <text x="380" y="224" text-anchor="middle" font-weight="600" fill="var(--ink)">EventBridge Scheduler</text>
+    <text x="380" y="244" text-anchor="middle" fill="var(--muted)" font-size="12">rate(2 minutes)</text>
+
+    <rect x="540" y="340" width="200" height="56" rx="10" fill="var(--green-soft)" stroke="var(--green)"/>
+    <text x="640" y="364" text-anchor="middle" font-weight="600" fill="var(--ink)">S3 (private)</text>
+    <text x="640" y="384" text-anchor="middle" fill="var(--muted)" font-size="12">backups/YYYY-MM-DD/*.json</text>
+
+    <rect x="20" y="200" width="200" height="56" rx="10" fill="var(--bg)" stroke="var(--line)" stroke-dasharray="4 4"/>
+    <text x="120" y="224" text-anchor="middle" font-weight="600" fill="var(--ink)">CloudWatch</text>
+    <text x="120" y="244" text-anchor="middle" fill="var(--muted)" font-size="12">Logs + Metrics (দুটো Lambda-ই)</text>
+
+    <text x="120" y="140" text-anchor="middle" fill="var(--muted)" font-size="12">আপনি নিজে Test চাপবেন</text>
+    <path d="M120 125 Q 200 110 300 90" fill="none" stroke="var(--muted)" stroke-dasharray="3 3" marker-end="url(#ar)"/>
+  </g>
+  <g stroke="var(--muted)" stroke-width="1.6" fill="none" marker-end="url(#ar)">
+    <line x1="280" y1="58" x2="222" y2="58"/>
+    <line x1="480" y1="58" x2="538" y2="58"/>
+    <line x1="640" y1="200" x2="640" y2="88"/>
+    <line x1="480" y1="228" x2="538" y2="228"/>
+    <line x1="640" y1="256" x2="640" y2="338"/>
+  </g>
+  <g font-size="12" fill="var(--ink)" font-family="JetBrains Mono, monospace">
+    <text x="228" y="50">HTTP GET</text>
+    <text x="486" y="50">PutItem</text>
+    <text x="648" y="150">Scan</text>
+    <text x="486" y="220">Invoke</text>
+    <text x="648" y="304">PutObject</text>
+  </g>
+</svg>
+</div>
+<div class="say"><span class="tag">ভিডিওতে বলুন (S0)</span>
+"আজ আমরা একটা serverless পাইপলাইন বানাব, যেখানে কোনো সার্ভার চালু রাখতে হবে না। প্রথম Lambda একটা পাবলিক API থেকে ১০ জন ইউজার এনে DynamoDB-তে রাখবে। দ্বিতীয় Lambda প্রতি ২ মিনিট পরপর পুরো টেবিলটা পড়বে আর S3-তে একটা নতুন JSON ফাইল লিখবে। কে কখন চালাবে সেটা ঠিক করবে EventBridge Scheduler। প্রতিটা Lambda নিজের IAM role নিয়ে চলবে, যাতে শুধু যতটুকু দরকার ততটুকু পারমিশন পায়।"
+</div>
+<div class="why"><span class="tag">মূল ধারণা</span>
+এখানে খেয়াল করার মতো ব্যাপার হলো, কোডে কোথাও access key লেখা নেই। Lambda চালু হলে AWS তাকে তার <b>execution role</b>-এর অস্থায়ী credential দিয়ে দেয়, আর boto3 সেটা নিজে থেকেই খুঁজে নেয়। তাই কোনো Lambda কী করতে পারবে সেটা কোড ঠিক করে না, IAM পলিসি ঠিক করে।
+</div>
+
+<!-- PART A -->
+<h2 id="part-a">Part A — DynamoDB আর S3 সেটআপ</h2>
+
+<div class="step" data-id="s1"><div class="shead"><input type="checkbox"><span class="snum">Step 1</span><h3>Region বাছাই করুন</h3><span class="chev">▶</span></div><div class="sbody">
+<ol><li>AWS কনসোলের উপরের ডানদিকে Region selector থেকে <b>US East (N. Virginia) — <span class="b" data-bind="region">us-east-1</span></b> বেছে নিন।</li>
+<li>পুরো কাজের সময় এই Region আর বদলাবেন না।</li></ol>
+<div class="why"><span class="tag">কেন</span>DynamoDB table, Lambda আর Scheduler, এগুলো সবই একটা নির্দিষ্ট Region-এর রিসোর্স। Lambda #2 ভিন্ন Region-এ থাকলে তার Region-এ টেবিলটা খুঁজে পাবে না, ফলে <code>ResourceNotFoundException</code> আসবে। আর Scheduler তার target বাছাইয়ের তালিকায় শুধু নিজের Region-এর Lambda-ই দেখায়।</div>
+<div class="say"><span class="tag">ভিডিওতে বলুন</span>"সবকিছু একই Region-এ, us-east-1-এ রাখছি। Region আলাদা হলে এক সার্ভিস আরেকটাকে খুঁজে পাবে না।"</div>
+</div></div>
+
+<div class="step" data-id="s2"><div class="shead"><input type="checkbox"><span class="snum">Step 2</span><h3>DynamoDB table তৈরি করুন</h3><span class="chev">▶</span></div><div class="sbody">
+<ol><li><b>DynamoDB → Tables → Create table</b> খুলুন।</li>
+<li>Table name দিন <code>jsonplaceholder-users</code>।</li>
+<li>Partition key দিন <code>id</code>, আর টাইপ বেছে নিন <b>Number</b>। ডিফল্টে String থাকে, সেটা বদলাতে হবে।</li>
+<li>Sort key খালি রাখুন। Table settings-এ Default রাখুন, অথবা Customize করে On-demand বেছে নিন।</li>
+<li><b>Create table</b> চাপুন, তারপর Status <b>Active</b> হওয়া পর্যন্ত অপেক্ষা করুন। এই সময়টা রেকর্ডিং pause রাখুন।</li></ol>
+<div class="why"><span class="tag">কেন Number</span>API যে JSON পাঠায় সেখানে <code>"id": 1</code> একটা সংখ্যা। boto3 এই সংখ্যাকে DynamoDB-র Number টাইপে পাঠায়। টেবিলের key যদি String হয়, তাহলে টাইপ মিলবে না আর PutItem <code>ValidationException</code> দেবে। Partition key-র কাজ হলো প্রতিটা আইটেমকে আলাদাভাবে চেনানো, অনেকটা SQL-এর primary key-র মতো। এর বাইরে name, email, address-এর মতো বাকি ফিল্ডের জন্য আগে থেকে কোনো schema বানাতে হয় না। এটাই NoSQL-এর সুবিধা।</div>
+<div class="say"><span class="tag">ভিডিওতে বলুন</span>"Partition key হিসেবে id দিচ্ছি, আর টাইপ রাখছি Number, কারণ API থেকে id সংখ্যা হিসেবেই আসে। বাকি ফিল্ডগুলোর জন্য কোনো কলাম বানাতে হচ্ছে না, DynamoDB নেস্টেড JSON সরাসরি রাখতে পারে।"</div>
+<div class="shot"><span class="tag">স্ক্রিনশট</span><code>01-dynamodb-table.png</code>: টেবিলের Overview, যেখানে Partition key <code>id (Number)</code> আর Status Active দেখা যায়। <b>BLUR</b>: টেবিলের ARN।</div>
+<div class="checkpoint">Checkpoint A: <code>jsonplaceholder-users</code> Active, partition key <code>id</code> (Number)।</div>
+</div></div>
+
+<div class="step" data-id="s3"><div class="shead"><input type="checkbox"><span class="snum">Step 3</span><h3>Private S3 bucket তৈরি করুন</h3><span class="chev">▶</span></div><div class="sbody">
+<ol><li><b>S3 → Buckets → Create bucket</b> খুলুন।</li>
+<li>Bucket type রাখুন <b>General purpose</b>।</li>
+<li>নাম দিন <span class="b" data-bind="bucket">YOUR_UNIQUE_BUCKET_NAME</span>, আর Region <span class="b" data-bind="region">us-east-1</span>।</li>
+<li><b>Block all public access</b> চালু রাখুন, এটা ডিফল্টেই চালু থাকে।</li>
+<li>Default encryption <b>SSE-S3</b> যেমন আছে তেমনই রাখুন। এরপর Create bucket চাপুন।</li>
+<li><code>backups/</code> ফোল্ডার আলাদা করে বানাতে হবে না।</li></ol>
+<div class="why"><span class="tag">কেন</span>S3-তে আসলে কোনো "ফোল্ডার" নেই। প্রতিটা object-এর key একটা লম্বা স্ট্রিং, যেমন <code>backups/2026-11-18/users-....json</code>। কনসোল <code>/</code> দেখে সেগুলোকে ফোল্ডারের মতো সাজিয়ে দেখায়, তাই প্রথম ফাইল লেখা হলেই ফোল্ডারটা দেখা যাবে। ব্যাকআপে ইউজারদের ইমেইল আর ফোন নম্বর থাকে, তাই bucket private রাখা জরুরি।</div>
+<div class="say"><span class="tag">ভিডিওতে বলুন</span>"Block Public Access চালু রাখছি, কারণ ব্যাকআপে ইউজারদের ব্যক্তিগত তথ্য থাকবে। backups ফোল্ডার আলাদা করে বানাচ্ছি না। S3-তে ফোল্ডার আসলে key-এর একটা prefix মাত্র, প্রথম ফাইল লেখা হলে এটা নিজে থেকেই দেখা যাবে।"</div>
+<div class="checkpoint">Checkpoint B: <span data-bind="region">us-east-1</span>-এ একটা private S3 bucket আছে।</div>
+</div></div>
+
+<!-- PART B -->
+<h2 id="part-b">Part B — Lambda #1: API থেকে DynamoDB-তে</h2>
+
+<div class="step" data-id="s4"><div class="shead"><input type="checkbox"><span class="snum">Step 4</span><h3>Lambda #1 তৈরি করুন</h3><span class="chev">▶</span></div><div class="sbody">
+<ol><li><b>Lambda → Functions → Create function → Author from scratch</b> খুলুন।</li>
+<li>Function name দিন <code>import-jsonplaceholder-users</code>।</li>
+<li>Runtime দিন <b>Python 3.12</b> বা তার চেয়ে নতুন ভার্শন (যেমন 3.15)।</li>
+<li><b>নতুন কনসোল ("Create Event Function"):</b> Additional settings-এ <b>ARM64 architecture = Off</b> রাখুন, যার মানে x86_64। <b>Custom execution role = Off</b> রাখুন, যার মানে basic permission-সহ নতুন role। <b>VPC = Off</b>। Durable execution আর EC2 capacity provider-ও Off থাকবে। তারপর <b>Create Event Function</b> চাপুন।</li>
+<li><b>পুরনো কনসোল:</b> Architecture <b>x86_64</b>, Execution role <b>Create a new role with basic Lambda permissions</b>, তারপর Create function।</li>
+<li><b>Configuration → General configuration → Edit</b> থেকে Memory <code>128</code> MB আর Timeout <code>0 min 30 sec</code> দিয়ে Save করুন।</li></ol>
+<div class="why"><span class="tag">কেন</span>ডিফল্ট timeout মাত্র ৩ সেকেন্ড। ইন্টারনেট থেকে API কল করে তারপর ১০ বার DynamoDB-তে লিখতে কখনো কখনো এর চেয়ে বেশি সময় লাগে, তাই ৩০ সেকেন্ড দিচ্ছি। "Basic permissions" role-এ শুধু CloudWatch-এ লগ লেখার পারমিশন থাকে, DynamoDB-তে লেখার পারমিশন থাকে না। সেটা পরের স্টেপে যোগ করব।</div>
+<div class="say"><span class="tag">ভিডিওতে বলুন</span>"Timeout ৩ থেকে বাড়িয়ে ৩০ সেকেন্ড করছি, কারণ এই ফাংশন বাইরের একটা API কল করবে। নতুন role-টায় এখন শুধু লগ লেখার পারমিশন আছে।"</div>
+</div></div>
+
+<div class="step" data-id="s5"><div class="shead"><input type="checkbox"><span class="snum">Step 5</span><h3>Lambda #1-কে DynamoDB-তে লেখার পারমিশন দিন</h3><span class="chev">▶</span></div><div class="sbody">
+<ol><li>Lambda #1-এ <b>Configuration → Permissions</b> খুলে Role name লিংকে ক্লিক করুন। IAM নতুন ট্যাবে খুলবে।</li>
+<li><b>Add permissions → Create inline policy → JSON</b> বেছে নিন।</li>
+<li>এডিটরে যা লেখা আছে সব মুছে নিচের JSON পেস্ট করুন। এটা আপনার দেওয়া মান দিয়ে আগেই তৈরি হয়ে আছে।</li>
+<li>Next চাপুন, Policy name দিন <code>AllowPutDemoUsers</code>, তারপর Create policy।</li>
+<li>Role-এর পলিসি লিস্টে <code>AWSLambdaBasicExecutionRole...</code> আছে কিনা দেখুন। ওটা যেমন আছে থাকবে।</li></ol>
+<pre id="pol1"></pre>
+<div class="why"><span class="tag">কেন (Least privilege)</span>এই পলিসি একটাই কাজের অনুমতি দেয়: <b>একটা নির্দিষ্ট টেবিলে</b> <code>PutItem</code>। এই ফাংশন টেবিল থেকে পড়তে পারবে না, কিছু ডিলিট করতে পারবে না, অন্য কোনো টেবিলেও হাত দিতে পারবে না। এর বদলে <code>AdministratorAccess</code> দিলে কোডে একটা বাগ বা একটা ক্ষতিকর dependency থাকলেই পুরো অ্যাকাউন্ট ঝুঁকিতে পড়ত। পারমিশন যত কম, কিছু ভুল হলে ক্ষতিও তত কম (blast radius ছোট থাকে)।</div>
+<div class="warn"><span class="tag">BLUR</span>এই JSON-এ আপনার Account ID আছে, তাই এডিটে এই অংশটা blur করবেন।</div>
+<div class="say"><span class="tag">ভিডিওতে বলুন</span>"AdministratorAccess দিলে কাজ হয়ে যেত ঠিকই, কিন্তু সেটা ভুল অভ্যাস। এই ফাংশনের দরকার শুধু একটা টেবিলে PutItem, তাই ঠিক এইটুকুই দিচ্ছি। একে বলে least privilege।"</div>
+<div class="shot"><span class="tag">স্ক্রিনশট</span><code>02-lambda1-iam.png</code>: Role-এর Permissions ট্যাব, যেখানে দুটো পলিসি দেখা যায়।</div>
+</div></div>
+
+<div class="step" data-id="s6"><div class="shead"><input type="checkbox"><span class="snum">Step 6</span><h3>Environment variable দিন আর ZIP #1 আপলোড করুন</h3><span class="chev">▶</span></div><div class="sbody">
+<ol><li><b>Configuration → Environment variables → Edit → Add</b> থেকে Key <code>TABLE_NAME</code> আর Value <code>jsonplaceholder-users</code> দিয়ে Save করুন।</li>
+<li><b>Code</b> ট্যাবে গিয়ে <b>Upload from → .zip file</b> বেছে নিন। তারপর <code>lambda_zips/lambda-import-users.zip</code> সিলেক্ট করে Save চাপুন। ভেতরের ZIP দেবেন, বাইরেরটা না।</li>
+<li>এডিটরে <code>lambda_function.py</code> দেখা যাচ্ছে কিনা মিলিয়ে নিন। ক্যামেরায় কোডটা একটু স্ক্রল করে দেখাতে পারেন।</li>
+<li><b>Runtime settings</b>-এ Handler <code>lambda_function.lambda_handler</code> আছে কিনা দেখুন।</li></ol>
+<div class="why"><span class="tag">কেন</span>টেবিলের নাম কোডে সরাসরি না লিখে environment variable-এ রাখা হয়েছে। তাহলে একই কোড dev আর prod-এ আলাদা টেবিলের সাথে চালানো যায়, কোড বদলাতে হয় না। Handler-এর মানে হলো <code>ফাইলের_নাম.ফাংশনের_নাম</code>, অর্থাৎ Lambda <code>lambda_function.py</code> ফাইলের <code>lambda_handler()</code> ফাংশনটা চালাবে। বাইরের ZIP আপলোড করলে <code>lambda_function.py</code> ZIP-এর root-এ থাকে না, ফলে <code>Unable to import module</code> এরর আসে।</div>
+<div class="say"><span class="tag">ভিডিওতে বলুন</span>"কোডে টেবিলের নাম লেখা নেই, সেটা আসে environment variable থেকে। Handler-এর মানে হলো কোন ফাইলের কোন ফাংশন চালানো হবে।" (এরপর নিচের <a href="#code">কোড অংশ</a> থেকে কোডটা ২–৩ লাইনে ব্যাখ্যা করুন।)</div>
+</div></div>
+
+<div class="step" data-id="s7"><div class="shead"><input type="checkbox"><span class="snum">Step 7</span><h3>Lambda #1 টেস্ট করুন আর CloudWatch দেখুন</h3><span class="chev">▶</span></div><div class="sbody">
+<ol><li><b>Test</b> ট্যাবে বা এডিটরের TEST EVENTS-এ <b>Create new event</b> চাপুন। নাম দিন <code>ImportUsersTest</code>, Event JSON দিন <code>{}</code>, তারপর Save করুন।</li>
+<li><b>Test</b> চাপুন। আউটপুটে এরকম আসার কথা:</li></ol>
+<pre>{
+  "statusCode": 200,
+  "body": "{\"table\": \"jsonplaceholder-users\", \"saved_count\": 10}"
+}</pre>
+<ol start="3"><li><b>সবচেয়ে সহজ রাস্তা:</b> টেস্ট রেজাল্টের সবুজ বক্সের উপরে <b>"Executing function: succeeded (logs ↗)"</b> আছে। <b>logs</b> লিংকে ক্লিক করলে এই রানের log stream সরাসরি খুলবে। Log output-এর উপরের <b>"Click here ↗"</b> লিংকটা পুরো log group খোলে।</li><li><b>মেনু ধরে যেতে চাইলে (নতুন CloudWatch):</b> বাঁ পাশে <b>▸ Logs</b> খুলুন, তারপর <b>Log Management</b> → <b>Log groups</b> ট্যাব। Search-এ <code>import</code> লিখে <code>/aws/lambda/import-jsonplaceholder-users</code> খুলুন, তারপর সবচেয়ে উপরের stream। পুরনো কনসোলে এই অপশনের নাম <b>Logs → Log groups</b>।</li><li>সেখানে <code>Saved user 1: Leanne Graham</code> … <code>SUCCESS: Saved 10 users</code> আর শেষে <code>REPORT</code> লাইন দেখবেন। CloudWatch-এ সময় <b>UTC</b>-তে দেখায়, অর্থাৎ ঢাকার সময়ের চেয়ে ৬ ঘণ্টা পিছিয়ে।</li></ol>
+<div class="why"><span class="tag">ক্যামেরায় দেখানোর মতো</span>প্রথম রানে <b>Init duration</b> দেখায়। এটা <b>cold start</b>, অর্থাৎ নতুন container চালু হতে যে সময় লাগে। দ্বিতীয়বার Test চাপলে Init duration আর থাকে না, কারণ container আবার ব্যবহার হয়। এই কারণেই কোডে <code>boto3.resource()</code> handler-এর বাইরে লেখা। <b>Max memory used</b> (~৯৬ MB) আর <b>Resources configured</b> (128 MB) তুলনা করলে বোঝা যায় মেমরি যথেষ্ট ছিল কিনা।</div>
+<div class="why"><span class="tag">কেন <code>{}</code></span>এই ফাংশন <code>event</code> থেকে কিছুই পড়ে না, তাই একটা খালি JSON পাঠালেই চলে। Test চাপলে Lambda একবার invoke হয়। কোডের প্রতিটা <code>print()</code> নিজে থেকেই CloudWatch Logs-এ চলে যায়, কারণ role-এ <code>AWSLambdaBasicExecutionRole</code> আছে।</div>
+<div class="say"><span class="tag">ভিডিওতে বলুন</span>"Status 200, saved_count 10। এবার CloudWatch-এ দেখি। কোডে যত print() আছে, সব এখানে লাইন ধরে চলে এসেছে। START, END আর REPORT লাইনগুলো Lambda নিজে লেখে। REPORT লাইনে দেখা যায় কত সময় লেগেছে আর কতটা মেমরি খরচ হয়েছে।"</div>
+<div class="shot"><span class="tag">স্ক্রিনশট</span><code>03-lambda1-test.png</code>: সফল টেস্টের আউটপুট। <code>04-lambda1-logs.png</code>: CloudWatch log stream-এ Saved user লাইনগুলো।</div>
+</div></div>
+
+<div class="step" data-id="s8"><div class="shead"><input type="checkbox"><span class="snum">Step 8</span><h3>DynamoDB-তে ডেটা দেখুন, তারপর আবার চালিয়ে দেখুন</h3><span class="chev">▶</span></div><div class="sbody">
+<ol><li><b>DynamoDB → Explore items → jsonplaceholder-users → Run</b> চাপুন। ১০টা আইটেম আসার কথা।</li>
+<li>যেকোনো একটা আইটেম খুলে <code>address</code> আর <code>company</code>-এর নেস্টেড ডেটা দেখান।</li>
+<li>এরপর Lambda #1 আরেকবার Test করুন, তারপর আবার Scan করুন। এবারও ১০টাই থাকবে, ২০টা হবে না।</li></ol>
+<div class="why"><span class="tag">কেন ২০ হয় না</span><code>PutItem</code> নতুন রো যোগ করে না, বরং "এই key-তে এই আইটেম রাখো" কাজটা করে। একই <code>id</code> দিয়ে আগে থেকে আইটেম থাকলে পুরোটা replace হয়ে যায়। একে upsert-এর মতো বলা যায়, আর এর ফলে অপারেশনটা <b>idempotent</b>: যতবারই চালান, ফলাফল একই থাকে।</div>
+<div class="say"><span class="tag">ভিডিওতে বলুন</span>"আবার চালালাম, তবুও ১০টা। কারণ PutItem একই id পেলে পুরনো আইটেমটা বদলে দেয়, নতুন করে যোগ করে না।"</div>
+<div class="shot"><span class="tag">স্ক্রিনশট</span><code>05-dynamodb-items.png</code>: Explore items-এ ১০টা আইটেম।</div>
+<div class="checkpoint">Checkpoint C: টেবিলে ১০ জন ইউজার আছে, আর CloudWatch-এ লগ দেখা যাচ্ছে।</div>
+</div></div>
+
+<!-- PART C -->
+<h2 id="part-c">Part C — Lambda #2: DynamoDB থেকে S3</h2>
+
+<div class="step" data-id="s9"><div class="shead"><input type="checkbox"><span class="snum">Step 9</span><h3>Lambda #2 তৈরি করুন</h3><span class="chev">▶</span></div><div class="sbody">
+<ol><li><b>Create function → Author from scratch</b> থেকে নাম দিন <code>export-dynamodb-to-s3</code>, Runtime Python 3.12 বা নতুন। নতুন কনসোলে Additional settings-এর সব toggle Off রাখলেই x86_64 আর basic role বেছে নেওয়া হয়ে যায়।</li>
+<li>General configuration-এ Memory 128 MB আর Timeout 30 সেকেন্ড দিন।</li></ol>
+<div class="why"><span class="tag">কেন আলাদা role</span>দুটো Lambda-র কাজ আলাদা, তাই প্রত্যেকের role-ও আলাদা। Lambda #1 শুধু লেখে, Lambda #2 পড়ে আর S3-তে লেখে। একটাই role শেয়ার করলে দুটো ফাংশনই দুটোর পারমিশন পেয়ে যেত।</div>
+<div class="say"><span class="tag">ভিডিওতে বলুন</span>"দ্বিতীয় ফাংশনের জন্য আলাদা role নিচ্ছি। প্রত্যেক ফাংশন শুধু নিজের কাজটুকুর পারমিশন পাবে।"</div>
+</div></div>
+
+<div class="step" data-id="s10"><div class="shead"><input type="checkbox"><span class="snum">Step 10</span><h3>Lambda #2-কে Scan আর PutObject-এর পারমিশন দিন</h3><span class="chev">▶</span></div><div class="sbody">
+<ol><li><b>Configuration → Permissions → Role name → Add permissions → Create inline policy → JSON</b> খুলুন।</li>
+<li>নিচের JSON পেস্ট করুন। Policy name দিন <code>AllowDynamoDBJsonBackup</code>, তারপর Create policy।</li></ol>
+<pre id="pol2"></pre>
+<div class="why"><span class="tag">কেন এই দুটো</span><b>১.</b> <code>dynamodb:Scan</code> দিয়ে শুধু একটা টেবিল পড়া যাবে। <b>২.</b> <code>s3:PutObject</code> দিয়ে শুধু <code>backups/*</code> prefix-এর ভেতরে লেখা যাবে, bucket-এর অন্য কোথাও না। Delete, GetObject বা টেবিল বদলানোর মতো কোনো পারমিশন এখানে নেই। খেয়াল করুন, S3-এর ARN-এ Region বা Account ID থাকে না (<code>arn:aws:s3:::bucket/key</code>), কারণ bucket-এর নাম পুরো দুনিয়ায় ইউনিক।</div>
+<div class="warn"><span class="tag">BLUR</span>DynamoDB ARN-এর Account ID blur করবেন।</div>
+<div class="say"><span class="tag">ভিডিওতে বলুন</span>"এই ফাংশন টেবিল পড়বে আর S3-এর শুধু backups ফোল্ডারে লিখবে। ডিলিট করার পারমিশন ইচ্ছা করেই দিইনি। কোডে বাগ থাকলেও সে কোনো ব্যাকআপ মুছতে পারবে না।"</div>
+<div class="shot"><span class="tag">স্ক্রিনশট</span><code>06-lambda2-iam.png</code>: Role-এর Permissions ট্যাব।</div>
+</div></div>
+
+<div class="step" data-id="s11"><div class="shead"><input type="checkbox"><span class="snum">Step 11</span><h3>Env vars দিন আর ZIP #2 আপলোড করুন</h3><span class="chev">▶</span></div><div class="sbody">
+<table><tr><th>Key</th><th>Value</th></tr>
+<tr><td><code>TABLE_NAME</code></td><td><code>jsonplaceholder-users</code></td></tr>
+<tr><td><code>BUCKET_NAME</code></td><td><span class="b" data-bind="bucket">YOUR_UNIQUE_BUCKET_NAME</span></td></tr>
+<tr><td><code>BACKUP_PREFIX</code></td><td><code>backups</code></td></tr></table>
+<ol><li>Code ট্যাবে <b>Upload from → .zip file</b> থেকে <code>lambda_zips/lambda-backup-to-s3.zip</code> আপলোড করুন।</li>
+<li>Handler <code>lambda_function.lambda_handler</code> আছে কিনা দেখুন।</li></ol>
+<div class="why"><span class="tag">কেন BACKUP_PREFIX = backups</span>IAM পলিসি শুধু <code>backups/*</code>-এর ভেতরে লেখার অনুমতি দেয়। এখানে অন্য কোনো prefix দিলে S3 <code>AccessDenied</code> দেবে। অর্থাৎ env var আর পলিসি দুটো মিলতে হবে।</div>
+</div></div>
+
+<div class="step" data-id="s12"><div class="shead"><input type="checkbox"><span class="snum">Step 12</span><h3>Lambda #2 নিজে চালিয়ে টেস্ট করুন</h3><span class="chev">▶</span></div><div class="sbody">
+<ol><li><code>ExportUsersTest</code> নামে <code>{}</code> event বানিয়ে Test চাপুন।</li>
+<li>আউটপুটে <code>exported_count: 10</code> আর একটা <code>s3_uri</code> আসবে।</li>
+<li><b>S3 → <span data-bind="bucket">bucket</span> → backups/ → আজকের UTC তারিখ</b> খুলে দেখুন একটা <code>users-...json</code> ফাইল এসেছে। সেটা Download বা Open করে ভেতরটা দেখান।</li>
+<li>আরেকবার Test করুন। এবার দ্বিতীয় একটা ফাইল আসবে, আগেরটা overwrite হবে না।</li></ol>
+<div class="why"><span class="tag">কেন ফাইলের নাম ইউনিক</span>Key তৈরি হয় UTC তারিখ, মাইক্রোসেকেন্ড পর্যন্ত সময় আর Lambda-র <code>request_id</code> মিলিয়ে। একই মাইক্রোসেকেন্ডে দুটো রান হলেও request ID আলাদা থাকবে। ফলে কোনো রান আরেকটার ফাইল মুছে ফেলবে না, প্রতিটা রানের নিজের ফাইল থাকবে। তারিখটা UTC-তে, তাই ঢাকায় সকাল ৬টার আগে কাজ করলে ফোল্ডারে আগের দিনের তারিখ দেখা যাবে।</div>
+<div class="say"><span class="tag">ভিডিওতে বলুন</span>"দুবার চালালাম, তাই দুটো আলাদা ফাইল হয়েছে। ফাইলের নামে সময় আর request ID দুটোই আছে, তাই কোনোটা আরেকটাকে overwrite করে না।"</div>
+<div class="shot"><span class="tag">স্ক্রিনশট</span><code>07-lambda2-test.png</code>: টেস্ট আউটপুট। <code>08-s3-manual-files.png</code>: S3-তে দুটো JSON ফাইল। <code>09-json-content.png</code>: ফাইলের ভেতরের ডেটা।</div>
+<div class="checkpoint">Checkpoint D: S3-তে অন্তত দুটো আলাদা timestamped JSON ফাইল আছে।</div>
+</div></div>
+
+<!-- PART D -->
+<h2 id="part-d">Part D — প্রতি ২ মিনিটে নিজে নিজে চালানো</h2>
+
+<div class="step" data-id="s13"><div class="shead"><input type="checkbox"><span class="snum">Step 13</span><h3>EventBridge Scheduler-এ schedule তৈরি করুন</h3><span class="chev">▶</span></div><div class="sbody">
+<ol><li><b>Amazon EventBridge → Scheduler → Schedules → Create schedule</b> খুলুন।</li>
+<li>Name দিন <code>dynamodb-backup-every-2min</code>, আর Group রাখুন <code>default</code>।</li>
+<li>Occurrence <b>Recurring</b>, Schedule type <b>Rate-based</b>, Rate <code>2</code> <b>minutes</b>।</li>
+<li>Flexible time window <b>Off</b> করুন, তারপর Next।</li>
+<li>Target-এ <b>AWS Lambda Invoke</b> বেছে নিয়ে Function দিন <code>export-dynamodb-to-s3</code>। Payload <code>{}</code>, তারপর Next।</li>
+<li>Schedule state <b>Enabled</b> রাখুন। Permissions-এ বেছে নিন <b>Create new role for this schedule</b>।</li>
+<li>Next দিয়ে Review করুন, তারপর <b>Create schedule</b>।</li></ol>
+<div class="why"><span class="tag">কেন দুটো আলাদা role</span>এখানে দুটো আলাদা প্রশ্ন আছে। <b>Lambda-কে চালু করার অনুমতি কার আছে?</b> এর উত্তর Scheduler-এর role, যেখানে <code>lambda:InvokeFunction</code> পারমিশন থাকে। <b>চালু হওয়ার পর Lambda কী কী করতে পারবে?</b> এর উত্তর Lambda-র execution role, যেখানে Scan আর PutObject থাকে। Scheduler নিজে DynamoDB বা S3-তে কিছু করে না, শুধু সময়মতো Lambda-কে ডাকে।<br><br><b>Flexible window Off</b> রাখলে Scheduler যতটা সম্ভব ঠিক সময়ে চালাবে। চালু রাখলে AWS লোড ছড়িয়ে দিতে কয়েক মিনিট পরে চালাতে পারে।</div>
+<div class="say"><span class="tag">ভিডিওতে বলুন</span>"Scheduler-এর জন্য আরেকটা role তৈরি হচ্ছে। এর কাজ শুধু Lambda-কে invoke করা। Lambda চালু হওয়ার পর কী করতে পারবে, সেটা ঠিক করে Lambda-র নিজের role। দুটো আলাদা দায়িত্ব, তাই দুটো আলাদা role।"</div>
+<div class="shot"><span class="tag">স্ক্রিনশট</span><code>10-scheduler.png</code>: Schedule-এর detail পেজ, যেখানে Enabled আর rate(2 minutes) দেখা যায়।</div>
+</div></div>
+
+<div class="step" data-id="s14"><div class="shead"><input type="checkbox"><span class="snum">Step 14</span><h3>নিজে নিজে চলছে কিনা যাচাই করুন</h3><span class="chev">▶</span></div><div class="sbody">
+<div class="rec"><span class="tag">রেকর্ডিং</span>এখানে রেকর্ডিং <b>pause</b> করে ৫–৬ মিনিট অপেক্ষা করুন, যাতে অন্তত ২–৩টা রান হয়ে যায়। এডিটে লিখে দিতে পারেন "৬ মিনিট পর"।</div>
+<ol><li>S3-তে <b>backups/তারিখ/</b> খুলে Refresh চাপুন। আগের দুটো ম্যানুয়াল ফাইলের পরে মোটামুটি ২ মিনিট পরপর নতুন ফাইল আসছে কিনা দেখুন।</li>
+<li>CloudWatch → <b>Logs → Log Management → Log groups</b> থেকে <code>/aws/lambda/export-dynamodb-to-s3</code> খুলে নতুন log stream বা request গুলো দেখুন।</li>
+<li>Lambda #2-এর <b>Monitor → Metrics</b>-এ Invocations গ্রাফ বাড়ছে কিনা দেখুন। Errors শূন্য থাকা উচিত।</li></ol>
+<div class="why"><span class="tag">মনে রাখুন</span><code>rate(2 minutes)</code> মানে মোটামুটি ২ মিনিট পরপর, সেকেন্ড ধরে ঠিক ২ মিনিট না। এভাবে চললে ঘণ্টায় প্রায় ৩০টা আর দিনে প্রায় ৭২০টা ফাইল জমবে, তাই প্রমাণ নেওয়া হয়ে গেলেই schedule বন্ধ করবেন।</div>
+<div class="say"><span class="tag">ভিডিওতে বলুন</span>"৬ মিনিট পর এসে দেখছি, আমি কিছু না চাপলেও ২ মিনিট পরপর নতুন ফাইল আসছে। Metrics-এ Invocations বাড়ছে, আর Errors শূন্য।"</div>
+<div class="shot"><span class="tag">স্ক্রিনশট</span><code>11-s3-scheduled-files.png</code>: অনেকগুলো ফাইল, যাদের টাইমস্ট্যাম্পে ~২ মিনিটের ব্যবধান। <code>12-lambda2-metrics.png</code>: Invocations গ্রাফ।</div>
+<div class="checkpoint">Checkpoint E: Scheduler Enabled, অন্তত দুটো অটোমেটিক রান হয়েছে, আর S3-তে সেগুলোর ফাইল আছে।</div>
+</div></div>
+
+<!-- PART E -->
+<h2 id="part-e">Part E — পর্যবেক্ষণ আর Cleanup</h2>
+
+<div class="step" data-id="s15"><div class="shead"><input type="checkbox"><span class="snum">Step 15</span><h3>Metrics আর Logs-এর পার্থক্য দেখান</h3><span class="chev">▶</span></div><div class="sbody">
+<table><tr><th></th><th>Metrics</th><th>Logs</th></tr>
+<tr><td>কী বলে</td><td>কতবার চলল, কতক্ষণ লাগল, ফেল করল কিনা</td><td>ভেতরে কী ঘটল: <code>Saved user 3...</code></td></tr>
+<tr><td>কে তৈরি করে</td><td>Lambda নিজে থেকে (Invocations, Errors, Duration, Throttles)</td><td>আপনার কোডের <code>print()</code> আর START/END/REPORT লাইন</td></tr>
+<tr><td>কখন কাজে লাগে</td><td>গ্রাফ আর alarm-এ: "Errors &gt; 0 হলে জানাও"</td><td>ডিবাগ করতে: "কোন ইউজারে গিয়ে ভাঙল?"</td></tr></table>
+<div class="why"><span class="tag">কেন <code>raise</code> জরুরি</span>দুটো কোডেই <code>except</code>-এর ভেতরে শেষে <code>raise</code> আছে। এরর ধরে শুধু print করে <code>return</code> করলে Lambda ধরে নিত রানটা সফল হয়েছে, ফলে Errors মেট্রিক শূন্যই থাকত। তখন কোনো alarm বাজত না, অথচ ব্যাকআপও হতো না।</div>
+<div class="say"><span class="tag">ভিডিওতে বলুন</span>"Metrics বলে কতবার চলল আর ফেল করল কিনা। Logs বলে ভেতরে কী ঘটল। কতজন ইউজার সেভ হলো, সেটা কিন্তু Logs-এ আছে, Metrics-এ নেই।"</div>
+<div class="shot"><span class="tag">স্ক্রিনশট</span><code>13-lambda1-metrics.png</code>: Lambda #1-এর Monitor ট্যাব।</div>
+</div></div>
+
+<div class="step" data-id="s16"><div class="shead"><input type="checkbox"><span class="snum">Step 16</span><h3>(ঐচ্ছিক) ৭ দিনের lifecycle rule যোগ করুন</h3><span class="chev">▶</span></div><div class="sbody">
+<ol><li><b>S3 → bucket → Management → Create lifecycle rule</b> খুলুন।</li>
+<li>Name দিন <code>expire-demo-backups-after-7-days</code>। Scope-এ Limit by filter বেছে Prefix দিন <code>backups/</code>।</li>
+<li>Action-এ বেছে নিন <b>Expire current versions of objects</b>, আর Days দিন <code>7</code>। এরপর Create rule।</li></ol>
+<div class="why"><span class="tag">কেন</span>ব্যাকআপ কতদিন রাখা হবে, সেটা হাতে হাতে ডিলিট না করে নিয়ম বানিয়ে S3-কে দিয়ে দেওয়া যায়। Production-এ এই নিয়ম সাধারণত আসে retention policy থেকে, যেমন "৩০ দিনের ব্যাকআপ রাখতে হবে"।</div>
+</div></div>
+
+<div class="step" data-id="s17"><div class="shead"><input type="checkbox"><span class="snum">ব্যাখ্যা</span><h3>এটা কেন production backup না, ক্যামেরায় বুঝিয়ে বলুন</h3><span class="chev">▶</span></div><div class="sbody">
+<ul><li><b>Scan কোনো snapshot নেয় না।</b> Scan চলার মধ্যেই কেউ টেবিলে লিখলে JSON-এ কিছু আইটেম পুরনো আর কিছু নতুন অবস্থায় আসতে পারে।</li>
+<li><b>শুধু ডেটা থাকে, টেবিলের কনফিগারেশন থাকে না।</b> Index, capacity সেটিং, TTL, alarm, পলিসি, কোনোটাই JSON-এ নেই। টেবিল ডিলিট হয়ে গেলে শুধু এই JSON থেকে আগের মতো টেবিল আবার বানানো যাবে না।</li>
+<li><b>বড় টেবিলে এই পদ্ধতি টিকবে না।</b> Lambda সর্বোচ্চ ১৫ মিনিট চলতে পারে আর মেমরিও সীমিত। প্রতি ২ মিনিটে পুরো টেবিল scan করলে read capacity, মানে টাকা, খরচ হতে থাকবে।</li>
+<li><b>Production-এ যা ব্যবহার হয়:</b> DynamoDB <b>Point-in-Time Recovery (PITR)</b>, যা দিয়ে গত ৩৫ দিনের যেকোনো সেকেন্ডে restore করা যায়। আর <b>Export to S3</b>, যা টেবিলের read capacity খরচ না করেই export করে।</li></ul>
+<div class="say"><span class="tag">ভিডিওতে বলুন</span>"এটা শেখার জন্য ভালো একটা export, কিন্তু আসল ব্যাকআপ না। আসল প্রজেক্টে PITR চালু করতাম, আর কতক্ষণের ডেটা হারানো চলবে (RPO) এবং কত দ্রুত ফিরতে হবে (RTO), সেই হিসেব অনুযায়ী ব্যাকআপ প্ল্যান করতাম।"</div>
+</div></div>
+
+<div class="step" data-id="s19"><div class="shead"><input type="checkbox"><span class="snum">Step 19</span><h3>Cleanup (README-র স্ক্রিনশট নেওয়ার পরে)</h3><span class="chev">▶</span></div><div class="sbody">
+<div class="warn"><span class="tag">আগে স্ক্রিনশট নিন</span>নিচের কিছু ডিলিট করার আগে <a href="#shots">স্ক্রিনশট লিস্টের</a> সবগুলো নেওয়া হয়েছে কিনা মিলিয়ে নিন।</div>
+<ol><li><b>Scheduler:</b> প্রথমে <code>dynamodb-backup-every-2min</code> Disable করুন, তারপর <code>14-scheduler-disabled.png</code> স্ক্রিনশট নিন, তারপর Delete করুন।</li>
+<li><b>Lambda:</b> দুটো ফাংশনই ডিলিট করুন।</li>
+<li><b>DynamoDB:</b> <code>jsonplaceholder-users</code> টেবিল ডিলিট করুন।</li>
+<li><b>S3:</b> Bucket সিলেক্ট করে <b>Empty</b> চাপুন (confirm করতে <code>permanently delete</code> লিখতে হবে), তারপর bucket ডিলিট করুন।</li>
+<li><b>CloudWatch:</b> <code>/aws/lambda/import-jsonplaceholder-users</code> আর <code>/aws/lambda/export-dynamodb-to-s3</code> দুটো log group ডিলিট করুন।</li>
+<li><b>IAM → Roles:</b> শুধু এই লাবের <b>তিনটা</b> role সিলেক্ট করুন: <code>import-jsonplaceholder-users-role-xxxx</code>, <code>export-dynamodb-to-s3-role-xxxx</code>, আর <code>Amazon_EventBridge_Scheduler_LAMBDA_xxxx</code>। এরপর Delete চাপুন, আর confirm বক্সে <code>delete</code> লিখুন।</li>
+<li class="warn" style="list-style:none;margin-left:-22px"><span class="tag">ভুল role ডিলিট করবেন না</span><b>Last activity</b> কলাম দেখে মিলিয়ে নিন: এই লাবের role-গুলো আজকের তারিখের। অন্য কাজের পুরনো role (যেমন <code>testlamda-role-...</code>) সিলেক্ট করবেন না। <code>AWSServiceRoleFor...</code> দিয়ে শুরু হওয়া role-গুলো AWS-এর নিজস্ব service-linked role, এগুলোতে কখনো হাত দেবেন না।</li>
+<li>শেষে IAM-এর Search-এ <code>jsonplaceholder</code> লিখে দেখান যে কিছুই আসছে না। ভিডিওতে এটাই cleanup-এর প্রমাণ।</li></ol>
+<div class="why"><span class="tag">কেন এই ক্রমে</span>Scheduler আগে বন্ধ করতে হবে। নইলে Lambda ডিলিট হওয়ার পরেও Scheduler প্রতি ২ মিনিটে সেটাকে ডাকতে থাকবে আর ফেল করবে। আর bucket খালি না করলে S3 সেটা ডিলিট করতে দেয় না। Lambda ডিলিট করলেও তার log group থেকে যায়, তাই সেগুলো আলাদা করে মুছতে হয়।</div>
+<div class="say"><span class="tag">ভিডিওতে বলুন</span>"ক্লাউডে কাজ শেষ হলে পরিষ্কার করাও কাজেরই অংশ। আগে Scheduler বন্ধ করছি, যাতে আর কোনো ফাইল তৈরি না হয়।"</div>
+</div></div>
+
+<!-- CODE -->
+<h2 id="code">কোড লাইন ধরে</h2>
+<div class="card">
+<h3>Lambda #1: <code>import_users/lambda_function.py</code></h3>
+<table>
+<tr><th style="width:42%">কোড</th><th>কী করে, কেন</th></tr>
+<tr><td><code>dynamodb = boto3.resource("dynamodb")</code></td><td>এটা handler-এর <b>বাইরে</b> লেখা। Lambda একই container পরের রানেও আবার ব্যবহার করে, তাই connection একবার তৈরি হলে পরের রানগুলো দ্রুত হয়।</td></tr>
+<tr><td><code>os.environ["TABLE_NAME"]</code></td><td>Env var থেকে টেবিলের নাম নেয়। Env var না থাকলে <code>KeyError</code> দেয়, অর্থাৎ ভুল কনফিগারেশন শুরুতেই ধরা পড়ে।</td></tr>
+<tr><td><code>urllib.request.urlopen(..., timeout=10)</code></td><td>Python-এর built-in লাইব্রেরি দিয়ে HTTP GET করে। <code>requests</code> লাইব্রেরি Lambda-তে আগে থেকে থাকে না, তাই এটা ব্যবহার করা হয়েছে। এতে ZIP-এ বাড়তি কোনো প্যাকেজ রাখতে হয় না।</td></tr>
+<tr><td><code>isinstance(user.get("id"), int)</code></td><td>ইনপুট যাচাই করে। API ভুল কিছু পাঠালে DynamoDB-তে লেখার আগেই থেমে যায়।</td></tr>
+<tr><td><code>table.put_item(Item=user)</code></td><td>পুরো ইউজার অবজেক্ট, নেস্টেড address আর company সহ, একটা আইটেম হিসেবে রাখে। একই id আগে থাকলে সেটা replace করে।</td></tr>
+<tr><td><code>except ... raise</code></td><td>লগে এরর লিখে তারপর আবার ছুড়ে দেয়, যাতে Lambda-র Errors মেট্রিকে রানটা ফেল হিসেবে গোনা হয়।</td></tr>
+</table>
+<h3 style="margin-top:20px">Lambda #2: <code>backup_users/lambda_function.py</code></h3>
+<table>
+<tr><th style="width:42%">কোড</th><th>কী করে, কেন</th></tr>
+<tr><td><code>while True: table.scan(...)</code><br><code>LastEvaluatedKey</code></td><td><b>Pagination।</b> একটা Scan সর্বোচ্চ ১ MB ডেটা ফেরত দেয়। আরও ডেটা বাকি থাকলে উত্তরে <code>LastEvaluatedKey</code> থাকে, আর পরের Scan সেখান থেকে শুরু হয় (<code>ExclusiveStartKey</code>)। ১০ জন ইউজারে একটাই page লাগে, কিন্তু বড় টেবিলে এই loop ছাড়া ডেটা বাদ পড়ে যেত।</td></tr>
+<tr><td><code>json_serializer</code> / <code>Decimal</code></td><td>boto3 DynamoDB-র সংখ্যাগুলো <code>Decimal</code> হিসেবে ফেরত দেয়, আর <code>json.dumps</code> Decimal চেনে না। তাই পূর্ণসংখ্যা হলে <code>int</code>-এ বদলায়, আর দশমিক হলে precision না হারাতে <code>str</code>-এ রাখে।</td></tr>
+<tr><td><code>items.sort(key=...id)</code></td><td>Scan কোনো নির্দিষ্ট ক্রমে ডেটা দেয় না, তাই id অনুযায়ী সাজিয়ে নেয়। এতে ফাইল পড়া আর দুটো ফাইল তুলনা করা সহজ হয়।</td></tr>
+<tr><td><code>f"{prefix}/{now:%Y-%m-%d}/users-{now:%H-%M-%S-%f}-{request_id}.json"</code></td><td>দিন অনুযায়ী ফোল্ডার, আর সময় ও request ID দিয়ে ইউনিক নাম তৈরি করে। ফলে কোনো রান আগের ফাইল overwrite করে না।</td></tr>
+<tr><td><code>s3.put_object(..., ContentType="application/json")</code></td><td>ফাইলটা S3-তে লেখে। Content type দেওয়া থাকায় ব্রাউজারে খুললে সেটা JSON হিসেবে দেখায়।</td></tr>
+</table>
+</div>
+
+<!-- TROUBLE -->
+<h2 id="trouble">এরর হলে</h2>
+<div class="card">
+<table>
+<tr><th>এরর</th><th>সম্ভাব্য কারণ</th><th>সমাধান</th></tr>
+<tr><td><code>KeyError: 'TABLE_NAME'</code> / <code>'BUCKET_NAME'</code></td><td>Env var দেওয়া হয়নি</td><td>Configuration → Environment variables চেক করুন</td></tr>
+<tr><td><code>AccessDeniedException</code> (PutItem/Scan)</td><td>পলিসির ARN ভুল, যেমন Region বা Account ID মেলেনি</td><td>DynamoDB-তে টেবিলের ARN কপি করে পলিসির সাথে হুবহু মিলিয়ে দেখুন</td></tr>
+<tr><td>S3 <code>AccessDenied</code></td><td>Bucket নাম ভুল, অথবা BACKUP_PREFIX ≠ backups</td><td>পলিসির <code>.../backups/*</code> অংশ আর env var মিলিয়ে দেখুন</td></tr>
+<tr><td><code>ValidationException</code> (key)</td><td>টেবিলের id টাইপ String দেওয়া হয়েছে</td><td>টেবিল ডিলিট করে id (Number) দিয়ে নতুন করে বানান</td></tr>
+<tr><td><code>Unable to import module 'lambda_function'</code></td><td>বাইরের ZIP আপলোড হয়েছে, অথবা Handler ভুল</td><td>ভেতরের ZIP আপলোড করুন, আর Handler দিন <code>lambda_function.lambda_handler</code></td></tr>
+<tr><td><code>Task timed out after 3.00 seconds</code></td><td>Timeout বাড়ানো হয়নি</td><td>Timeout ৩০ সেকেন্ড দিন</td></tr>
+<tr><td><code>ResourceNotFoundException</code></td><td>Region আলাদা, অথবা টেবিলের নামে টাইপো</td><td>উপরের ডানদিকে Region দেখে নিন</td></tr>
+<tr><td>Scheduler চালু, কিন্তু ফাইল আসছে না</td><td>ভুল target, schedule disabled, অথবা Lambda-তে এরর</td><td>Lambda #2-এর CloudWatch logs আর Metrics → Errors দেখুন</td></tr>
+<tr><td>Export-এ ০ ইউজার</td><td>Lambda #1 চালানো হয়নি</td><td>Step 7 আবার করুন</td></tr>
+</table>
+<p class="small">এরর হলে সাথে সাথে ভিডিও বন্ধ করার দরকার নেই। এরর পড়ে ঠিক করার অংশটাও দর্শকের জন্য ভালো শেখার মুহূর্ত হতে পারে।</p>
+</div>
+
+<!-- SHOTS -->
+<h2 id="shots">README-র স্ক্রিনশট লিস্ট</h2>
+<p>সবগুলো একটা <code>screenshots/</code> ফোল্ডারে এই নামেই রাখুন। README বানানোর সময় এই নামগুলো ধরেই ছবি বসানো হবে।</p>
+<div class="card" id="shotlist"></div>
+
+<p class="small" style="margin-top:40px">উৎস: অ্যাসাইনমেন্টের README, <code>lambda_src/</code> আর <code>iam_policies/</code>। AWS কনসোলের মেনুর নাম মাঝেমধ্যে একটু বদলায়, হুবহু না মিললে কাছাকাছি নামটা খুঁজে নিন।</p>
+</main>
+</div>
+
+<script>
+const LS='aws-lambda-ddb-s3-guide-v1';
+function load(){try{return JSON.parse(localStorage.getItem(LS))||{}}catch(e){return {}}}
+function save(s){try{localStorage.setItem(LS,JSON.stringify(s))}catch(e){}}
+let state=load(); state.done=state.done||{}; state.cfg=state.cfg||{};
+
+const shots=[
+ ['01-dynamodb-table.png','DynamoDB টেবিল, id (Number), Active'],
+ ['02-lambda1-iam.png','Lambda #1 role-এর পলিসি'],
+ ['03-lambda1-test.png','Lambda #1 টেস্ট আউটপুট (saved_count 10)'],
+ ['04-lambda1-logs.png','Lambda #1 CloudWatch log'],
+ ['05-dynamodb-items.png','DynamoDB-তে ১০টা আইটেম'],
+ ['06-lambda2-iam.png','Lambda #2 role-এর পলিসি'],
+ ['07-lambda2-test.png','Lambda #2 টেস্ট আউটপুট'],
+ ['08-s3-manual-files.png','S3-তে ম্যানুয়াল রানের দুটো ফাইল'],
+ ['09-json-content.png','JSON ফাইলের ভেতরের ডেটা'],
+ ['10-scheduler.png','Scheduler Enabled, rate(2 minutes)'],
+ ['11-s3-scheduled-files.png','S3-তে Scheduler-এর তৈরি ফাইলগুলো'],
+ ['12-lambda2-metrics.png','Lambda #2 Invocations গ্রাফ'],
+ ['13-lambda1-metrics.png','Lambda #1 Monitor/Metrics'],
+ ['14-scheduler-disabled.png','Cleanup: Scheduler Disabled']
+];
+const sl=document.getElementById('shotlist');
+sl.innerHTML=shots.map(([f,d])=>`<label style="display:flex;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line);cursor:pointer"><input type="checkbox" data-shot="${f}" style="accent-color:var(--green);width:18px;height:18px"><code>${f}</code><span class="small">${d}</span></label>`).join('');
+state.shots=state.shots||{};
+sl.querySelectorAll('input').forEach(i=>{i.checked=!!state.shots[i.dataset.shot];i.addEventListener('change',()=>{state.shots[i.dataset.shot]=i.checked;save(state)})});
+
+const steps=[...document.querySelectorAll('.step')];
+function progress(){const n=steps.filter(s=>state.done[s.dataset.id]).length;document.getElementById('pct').textContent=n+' / '+steps.length;document.getElementById('barfill').style.width=(100*n/steps.length)+'%'}
+steps.forEach(s=>{
+  const cb=s.querySelector('.shead input');
+  cb.checked=!!state.done[s.dataset.id]; s.classList.toggle('done',cb.checked);
+  cb.addEventListener('click',e=>e.stopPropagation());
+  cb.addEventListener('change',()=>{state.done[s.dataset.id]=cb.checked;s.classList.toggle('done',cb.checked);save(state);progress();
+    if(cb.checked){s.classList.remove('open');const nx=steps[steps.indexOf(s)+1];if(nx&&!state.done[nx.dataset.id])nx.classList.add('open')}});
+  s.querySelector('.shead').addEventListener('click',()=>s.classList.toggle('open'));
+});
+const firstOpen=steps.find(s=>!state.done[s.dataset.id]); if(firstOpen)firstOpen.classList.add('open');
+progress();
+
+document.getElementById('expandAll').onclick=()=>{const any=steps.some(s=>!s.classList.contains('open'));steps.forEach(s=>s.classList.toggle('open',any))};
+document.getElementById('reset').onclick=function(){if(this.dataset.c){state.done={};state.shots={};save(state);location.reload()}else{this.dataset.c=1;this.textContent='নিশ্চিত? আবার চাপুন';setTimeout(()=>{delete this.dataset.c;this.textContent='টিক মুছুন'},3000)}};
+
+const ids={region:'cfg-region',account:'cfg-account',bucket:'cfg-bucket'};
+for(const k in ids){const el=document.getElementById(ids[k]);if(state.cfg[k])el.value=state.cfg[k];el.addEventListener('input',()=>{state.cfg[k]=el.value.trim();save(state);render()})}
+function v(k,fb){const x=document.getElementById(ids[k]).value.trim();return x||fb}
+function render(){
+  const R=v('region','REGION'),A=v('account','ACCOUNT_ID'),B=v('bucket','YOUR_UNIQUE_BUCKET_NAME');
+  document.querySelectorAll('[data-bind]').forEach(e=>{e.textContent={region:R,account:A,bucket:B}[e.dataset.bind]});
+  const p1={Version:"2012-10-17",Statement:[{Sid:"WriteDemoUsers",Effect:"Allow",Action:"dynamodb:PutItem",Resource:`arn:aws:dynamodb:${R}:${A}:table/jsonplaceholder-users`}]};
+  const p2={Version:"2012-10-17",Statement:[{Sid:"ReadDemoUsers",Effect:"Allow",Action:"dynamodb:Scan",Resource:`arn:aws:dynamodb:${R}:${A}:table/jsonplaceholder-users`},{Sid:"WriteTimestampedJsonBackups",Effect:"Allow",Action:"s3:PutObject",Resource:`arn:aws:s3:::${B}/backups/*`}]};
+  setPre('pol1',JSON.stringify(p1,null,2)); setPre('pol2',JSON.stringify(p2,null,2));
+}
+function setPre(id,txt){const p=document.getElementById(id);p.textContent=txt;const b=document.createElement('button');b.className='copy';b.textContent='Copy';
+  b.onclick=async()=>{try{await navigator.clipboard.writeText(txt);b.textContent='কপি হয়েছে'}catch(e){const r=document.createRange();r.selectNodeContents(p);const s=getSelection();s.removeAllRanges();s.addRange(r);b.textContent='সিলেক্ট হয়েছে, Ctrl+C চাপুন'}setTimeout(()=>b.textContent='Copy',1800)};p.appendChild(b)}
+render();
+</script>
+</body>
+</html>
